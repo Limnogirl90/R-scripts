@@ -1,0 +1,19 @@
+png(file="another.try8.png",res=500,width=3500,height=3500)
+> par(mar=c(3,3,0.5,0.5),mgp=c(1.75,0.75,0))
+> plot(ordSite,pch=as.numeric(X$Year),col=as.numeric(X$Habitat),xlab="Latent variable 1",ylab="Latent variable 2",xlim=mx*c(-1,1),ylim=mx*c(-1,1))
+> points(ordSpp,pch=19,cex=0.4)
+> points(X$Year, pch=21:24, cex=1.5)
+> text(ordSpp[,1],ordSpp[,2],labels=colnames(inverts),cex=0.6,adj=-0.03)
+> legend("bottomright",legend=levels(X$Year),pch=21:24)
+> dev.off()
+# I attempted creating another file with the shapes for each of the four sampling years, but I am stuck on how to incorporate that file into this code.
+> colo[which(Year == '1983 TRUE', Habitat == 'cobble TRUE')] <- "white, pch = 21"
+> colo[which(Year == '1983 TRUE', Habitat == 'reef TRUE')] <- "gray, pch = 21"
+> colo[which(Year == '1991 TRUE', Habitat == 'cobble TRUE')] <- "white, pch = 22"
+> colo[which(Year == '1991 TRUE', Habitat == 'reef TRUE')] <- "gray, pch = 22"
+> colo[which(Year == '1999 TRUE', Habitat == 'cobble TRUE')] <- "white, pch = 23"
+> colo[which(Year == '1999 TRUE', Habitat == 'reef TRUE')] <- "gray, pch = 23"
+> colo[which(Year == '2014 TRUE', Habitat == 'cobble TRUE')] <- "white, pch = 24"
+> colo[which(Year == '2014 TRUE', Habitat == 'reef TRUE')] <- "gray, pch = 24"
+# I'm not entirely sure if I am doing this right, setting up the coding for the year-habitat combinations. I googled how to create shading data points in R but 
+couldn't find a direct solution. 

@@ -1,0 +1,108 @@
+library(mvabund)
+
+inverts = read.csv("invertsBarrett.csv",header=TRUE)
+str(inverts)
+X = inverts[,1:3]
+X$Year = factor(X$Year)
+# Analysing the ordinal (?) data, i.e. excluding Pulmonata/Prosobranchia
+inverts = mvabund(inverts[,4:24])
+
+# fit a main effects model
+invertFit = manyglm(inverts~Habitat*Month*Year,data=X, offset = log(apply(inverts,1,mean)))
+# Year entered into hte model last to look at effects of year after accounting for season and habitat
+# an offset for log row sum included to (approximately) account for differences in sampling intensity across samples
+
+# residual plot
+plot(invertFit)
+# looks good
+
+# do an anova to get univariate results
+# this will take about a minute to run.  For publication should actually use nBoot=999 and leave to run for 10 minutes.
+an.inverts = anova(invertFit,p.uni="adjusted",nBoot=99)
+an.inverts
+# everything is significant, but it seems like there are really strong patterns here with year. Most (about 60%?) of the change in deviance is due to Year. I assume it is year that is of most interest.
+# note from the univariate tests, that even after adjusting for multiple testing, there are significant year effects in ALL taxa. This is unusual.
+
+# have more of a look at where the action is, from univariate test statistics:
+an.snails$uni.test
+# the big stats are mostly for year (fourth row)
+sort(an.snails$uni.test[4,],decreasing=TRUE)
+# the taxa that seem to have the strongest change over time are Elimia, Dreissena polymorpha, Acari, Gammarus faciatus
+# although as before there are large and significant effects pretty much all over the place.
+
+# plot data to look at year effect
+plot.mvformula(log(inverts+1)~X$Year,pch=as.numeric(X$Habitat))
+# this isn't the prettiest plot. Different colours for different years, different symbols for Habitat.
+# you can see:
+# - that there is a lot of variation across reps within site (some is due to habitat, e.g. strong effect in ..polymorpha, ...bugensis and ...gammarus)
+# - many taxa have dropped to zero abundance at 2014, including the two most with strongest year effect (Elimia and D poly).
+# - A few have started at zero in 1983 and moved up from there (including Acari)
+# Might be worth using a line graph to visualise effects for each species?
+
+# try a line plot of the means:
+source("default.meanvar.plot.R") # to use the updated function that makes it easier to extract means
+source("meanvar.plot.R")
+
+mvYear=meanvar.plot(inverts~X$Year,table=TRUE)
+
+# construct a line plot for all taxa and save as a png file
+png(file="linePlot.png",res=500,width=3000,height=1500)
+{
+par(mar=c(3,3,0.5,0.5),mgp=c(1.75,0.75,0))
+matplot(levels(X$Year),log(mvYear$mean+1),type="l",col=rainbow(21)[1:21],lty=1,xaxt="n",xlab="Year",ylab="Mean count",yaxt="n")
+axis(1,c(levels(X$Year)))
+yax = c(0,1,10,100,1000)
+axis(2,at=log(yax+1),labels=yax)
+legend("topright",colnames(mvYear$mean),col=rainbow(21)[1:21],lty=1,cex=0.5,y.intersp=0.75,ncol=3)
+}
+dev.off()
+
+# could do something similar for year:Habitat or year:Month:Habitat if desired
+mv3Int=meanvar.plot(inverts~interaction(X$Year,X$Month,X$Habitat),table=TRUE)
+mvYearHab=meanvar.plot(inverts~interaction(X$Year,X$Habitat),table=TRUE)
+# the idea there would probably be to do separate line plots for different habitats.
+
+
+
+### have a go at an ordination using a latent variable model
+
+library(boral)
+ftOrd=boral(inverts,family="negative.binomial",num.lv=2)
+plot(ftOrd) #assumptions all look fine
+
+# now manualy construct an ordination
+ordSite = ftOrd$lv.mean %*% diag( 1/sqrt(apply(ftOrd$lv.mean^2,2,mean)) )
+ordSpp = ftOrd$lv.coefs.mean[,2:3] %*% diag( 1/sqrt(apply(ftOrd$lv.coefs.mean[,2:3]^2,2,mean)) )
+textSpp <- ordSpp
+textSpp[11,2] <- textSpp[11,2]-0.1#elimia leave alone
+textSpp[11,1] <- textSpp[11,1]+0.1
+textSpp[16,1] <- textSpp[16,1]-0.2 #trichop
+textSpp[16,2] <- textSpp[16,2]-0.2 
+textSpp[18,2] <- textSpp[18,2]+0.1#acari
+textSpp[1,1] <- textSpp[1,1]-0.2 #ephem
+textSpp[17,2]<- textSpp[17,2]-0.1#chiro
+textSpp[15,1] <- textSpp[15,1] # ephem
+textSpp[15,2] <- textSpp[15,2] 
+#can also use locator(1)
+
+# changing taxa label names
+names(newprice)[1]<-paste("premium")
+data_frame <- setNames(data_frame, c("premium","change","newprice"))
+
+mx = max(abs(ordSite),abs(ordSpp))  
+
+greyshade <- as.numeric(X$Habitat)-1
+
+# now make the ordination and save as a png file
+png(file="BarrettOrdination.png",res=500,width=3500,height=3500)
+{
+  par(mar=c(3,3,0.5,0.5),mgp=c(1.75,0.75,0))
+  plot(ordSite,bg=grey(greyshade*0.75),pch=as.numeric(X$Year)+20,
+       xlab="Latent variable 1",ylab="Latent variable 2",
+       xlim=mx*c(-1,1),ylim=mx*c(-1,1),asp=1)
+  points(ordSpp,pch=19,cex=0.4)
+  text(textSpp[,1],textSpp[,2],labels=colnames(inverts),cex=0.6,adj=-0.03)
+
+  legend("bottomright",legend=levels(X$Year),pch=21:24)
+}
+dev.off()
