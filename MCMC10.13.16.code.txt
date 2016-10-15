@@ -1,0 +1,183 @@
+# clear workspace
+rm(list=ls())
+
+# install and load the emdbook package
+if(!require(emdbook)){install.packages('emdbook');library(emdbook)}
+
+# load the data set
+data(ReedfrogFuncresp)
+
+# get familiar with the data
+head(ReedfrogFuncresp)
+summary(ReedfrogFuncresp)
+plot(ReedfrogFuncresp)
+
+# MCMC parameters
+prior.param1.a = 1
+prior.param2.a = 1
+prior.width.h = 10
+sd.a = 1e-2
+sd.h = 1e-3
+delta.a = 1e-8
+delta.h = 1e-8
+
+# define a function for the likelihood
+# of some parameters conditional on the data
+likelihood = function(p, N, k) {
+  a = p[1] # attack rate
+  h = p[2] # handling time
+  predprob = a / (1 + a * h * N) # functional response
+  return(exp(sum(dbinom(k, prob = predprob, size = N, log = TRUE))))
+}
+
+# define a function for the prior probability for the attack rate parameter
+prior.a = function(a.in, prior.param1.a, prior.param2.a){
+  dbeta(a.in, prior.param1.a, prior.param2.a)
+}
+
+# define a function for the prior probability for the handling time parameter
+prior.h = function(h.in, prior.width.h){
+  dexp(h.in, prior.width.h)
+}
+
+# define a function to make a random draw from the prior 
+# distribution for the attack rate parameter
+prior.draw.a = function(prior.param1.a, prior.param2.a){
+  rbeta(1, prior.param1.a, prior.param2.a)
+}
+
+# define a function to make a random draw from the prior 
+# distribution for the handling time parameter
+prior.draw.h = function(prior.width.h){
+  rexp(1, prior.width.h)
+}
+
+# define a function for the proposal probability for the attack rate parameter
+proposal.prob.a = function(a.old, a.new, sd.a, delta.a){
+  (pnorm(a.new + delta.a, a.old, sd.a) - pnorm(a.new - delta.a, a.old, sd.a)) /
+  (pnorm(1, a.old, sd.a) - pnorm(0, a.old, sd.a))
+}
+
+# define a function for the proposal probability for the handling time parameter
+proposal.prob.h = function(h.old, h.new, sd.h, delta.h){
+  (pnorm(h.new + delta.h, h.old, sd.h) - pnorm(h.new - delta.h, h.old, sd.h)) /
+  (1 - pnorm(0, h.old, sd.h))
+}
+
+# define a function to make proposals for the attack rate parameter
+proposal.draw.a = function(a.old, sd.a){
+  repeat{
+    a.new = rnorm(1, a.old, sd.a)
+    if(a.new > 0 & a.new < 1){
+      break
+    }
+  }
+  return(a.new)
+}
+
+# define a function to make proposals for the handling time parameter
+proposal.draw.h = function(h.old, sd.h){
+  repeat{
+    h.new = rnorm(1, h.old, sd.h)
+    if(h.new > 0){
+      break
+    }
+  }
+  return(h.new)
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# define length of MCMC chain
+chain.length = 100000
+
+# allocate vectors to store chains for each parameter
+a.chain = c(prior.draw.a(prior.param1.a, prior.param2.a), rep(0, chain.length))
+h.chain = c(prior.draw.h(prior.width.h), rep(0, chain.length))
+
+# iterate through each step in the chain
+for(ii in 2:chain.length){
+  # take a random draw to determine whether to update a or h
+  if(sample(1:2,1) == 1){
+    # draw a proposed jump for a
+    a.proposed = proposal.draw.a(a.chain[ii-1], sd.a)
+    # calculate the acceptance probability of accepting the jump
+    acceptance.prob =
+      likelihood(
+        c(a.proposed, h.chain[ii-1]),
+        ReedfrogFuncresp$Initial,
+        ReedfrogFuncresp$Killed) *
+      proposal.prob.a(a.proposed, a.chain[ii-1], sd.a, delta.a) /
+      likelihood(
+        c(a.chain[ii-1], h.chain[ii-1]),
+        ReedfrogFuncresp$Initial,
+        ReedfrogFuncresp$Killed) /
+      proposal.prob.a(a.chain[ii-1], a.proposed, sd.a, delta.a)
+    # determine whether to take the jump and update accordingly
+    if(runif(1) < acceptance.prob){
+      a.chain[ii] = a.proposed
+    } else {
+      a.chain[ii] = a.chain[ii-1]
+    }
+    # update h with its previous value
+    h.chain[ii] = h.chain[ii-1]
+  } else {
+    # draw a proposed jump for h
+    h.proposed = proposal.draw.h(h.chain[ii-1], sd.h)
+    # calculate the acceptance probability of accepting the jump
+    acceptance.prob =
+      likelihood(
+        c(a.chain[ii-1], h.proposed),
+        ReedfrogFuncresp$Initial,
+        ReedfrogFuncresp$Killed) *
+      proposal.prob.h(h.proposed, h.chain[ii-1], sd.h, delta.h) /
+      likelihood(
+        c(a.chain[ii-1], h.chain[ii-1]),
+        ReedfrogFuncresp$Initial,
+        ReedfrogFuncresp$Killed) /
+      proposal.prob.h(h.chain[ii-1], h.proposed, sd.h, delta.h)
+    # determine whether to take the jump and update accordingly
+    if(runif(1) < acceptance.prob){
+      h.chain[ii] = h.proposed
+    } else {
+      h.chain[ii] = h.chain[ii-1]
+    }
+    # update a with its previous value
+    a.chain[ii] = a.chain[ii-1]
+  }
+}
+
+# make a joint trace plot
+plot(a.chain, h.chain)
+
+# make a hexbin plot so the density is clearer
+if(!require(hexbin)){install.packages('hexbin');library(hexbin)}
+plot(hexbin(a.chain, h.chain))
+
+# load coda
+if(!require(coda)){install.packages('coda');library(coda)}
+
+# make an mcmc object so we can use coda
+posterior.samples = as.mcmc(as.matrix(data.frame(a = a.chain, h = h.chain)))
+
+# plot the traces and marginal posterior probability densities
+plot(posterior.samples)
